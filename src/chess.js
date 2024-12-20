@@ -13,6 +13,7 @@ class Figure extends Phaser.GameObjects.Sprite {
     this.setOrigin(0.5, 0.5).setInteractive().setScale(0.15);
     scene.add.existing(this);
     this.hasMoved = false;
+    this.originalPosition = { x, y };
   }
 
   moveTo(x, y) {
@@ -25,7 +26,7 @@ class Figure extends Phaser.GameObjects.Sprite {
     this.scene.pieceGrid[targetKey] = this;
     this.setPosition(x, y);
     this.hasMoved = true;
-
+    this.originalPosition = { x, y };
     // Если на целевой клетке есть фигура и она принадлежит сопернику, её нужно захватить
     if (targetPiece && targetPiece.color !== this.color) {
       this.capture(targetPiece);
@@ -534,6 +535,7 @@ class Chess extends Phaser.Scene {
     this.moveNumber = 1;
     this.moveHistory = [];
     this.promotionMenu = null;
+    this.draggedFigure = null;
   }
 
   preload() {
@@ -556,7 +558,9 @@ class Chess extends Phaser.Scene {
       .image(400, 400, "chessboard")
       .setScale(800 / this.add.image(400, 400, "chessboard").width);
     this.createPieces();
-    this.input.on("pointerdown", this.onClick.bind(this));
+    this.input.on("pointerdown", this.onPointerDown.bind(this));
+    this.input.on("pointermove", this.onPointerMove.bind(this));
+    this.input.on("pointerup", this.onPointerUp.bind(this));
     this.rightMenuContainer = this.add.container(800, 0); // Position at (550, 0)
     this.rightMenu = this.add
       .rectangle(0, 0, 250, 800, 0x333333)
@@ -615,6 +619,7 @@ class Chess extends Phaser.Scene {
 
   createPiece(PieceClass, color, x, y) {
     const piece = new PieceClass(this, x, y, color);
+    piece.originalPosition = { x, y };
     this.pieces.push(piece);
     this.pieceGrid[piece.getKeyFromCoordinates(x, y)] = piece;
 
@@ -623,6 +628,10 @@ class Chess extends Phaser.Scene {
     }
   }
 
+  resetFigurePosition(figure) {
+    const { x, y } = figure.originalPosition; // Берем сохраненные координаты
+    figure.setPosition(x, y); // Возвращаем фигуру в исходное положение
+  }
   getFigureAtCoordinates(x, y) {
     return this.pieceGrid[this.getKeyFromCoordinates(x, y)] || null;
   }
@@ -674,7 +683,7 @@ class Chess extends Phaser.Scene {
   highlightValidMoves(figure) {
     this.clearHighlights();
     const graphics = this.add.graphics({
-      fillStyle: { color: 0x00ff00, alpha: 0.5 },
+      fillStyle: { color: 0x000000, alpha: 0.4 },
     });
 
     for (let x = 0; x < 8; x++) {
@@ -711,10 +720,7 @@ class Chess extends Phaser.Scene {
       targetSquare.x,
       targetSquare.y
     );
-
-    if (!this.selectedFigure) {
-      this.selectFigure(clickedFigure, targetSquare);
-    } else {
+    if (this.selectedFigure) {
       this.handleMove(clickedFigure, targetSquare);
     }
   }
@@ -729,24 +735,103 @@ class Chess extends Phaser.Scene {
       this.highlightValidMoves(clickedFigure); // Подсвечиваем допустимые ходы
     }
   }
+  onPointerDown(pointer) {
+    const targetSquare = this.getSquareFromCoordinates(pointer.x, pointer.y);
+    const clickedFigure = this.getFigureAtCoordinates(
+      targetSquare.x,
+      targetSquare.y
+    );
+
+    if (clickedFigure && clickedFigure.color === this.currentTurn) {
+      this.draggedFigure = clickedFigure;
+      this.startDragPosition = { x: clickedFigure.x, y: clickedFigure.y };
+      this.highlightValidMoves(clickedFigure); // Подсвечиваем доступные клетки
+    }
+    if (this.selectedFigure) {
+      this.handleMove(clickedFigure, targetSquare);
+    }
+  }
+
+  onPointerMove(pointer) {
+    if (this.draggedFigure) {
+      this.draggedFigure.setPosition(pointer.x, pointer.y); // Следуем за курсором
+    }
+  }
+
+  onPointerUp(pointer) {
+    if (
+      this.draggedFigure &&
+      (this.draggedFigure.x !== this.startDragPosition.x ||
+        this.draggedFigure.y !== this.startDragPosition.y)
+    ) {
+      this.selectedFigure = this.draggedFigure;
+      const targetSquare = this.getSquareFromCoordinates(pointer.x, pointer.y);
+      // Сохраняем текущие координаты фигуры
+      const previousPosition = {
+        x: this.draggedFigure.x,
+        y: this.draggedFigure.y,
+      };
+
+      // Возвращаем фигуру на место для корректной проверки
+      this.draggedFigure.setPosition(
+        this.draggedFigure.originalPosition.x,
+        this.draggedFigure.originalPosition.y
+      );
+
+      // Проверяем ход через handleMove
+      const moveResult = this.handleMove(null, targetSquare);
+
+      if (!moveResult) {
+        // Если ход недопустим, возвращаем фигуру в исходное положение
+        this.draggedFigure.setPosition(
+          this.draggedFigure.originalPosition.x,
+          this.draggedFigure.originalPosition.y
+        );
+      } else {
+        // Если ход допустим, обновляем оригинальную позицию
+        this.draggedFigure.originalPosition = {
+          x: targetSquare.x,
+          y: targetSquare.y,
+        };
+      }
+
+      this.clearHighlights();
+      this.draggedFigure = null;
+    } else if (
+      this.draggedFigure && !this.selectedFigure &&
+      (this.draggedFigure.x === this.startDragPosition.x ||
+        this.draggedFigure.y === this.startDragPosition.y)
+    ) {
+      this.selectedFigure = this.draggedFigure;
+      this.draggedFigure = null;
+    } else {
+      // Если нет перетаскивания, сбрасываем выбранную фигуру
+      this.draggedFigure = null;
+      this.selectedFigure = null;
+      this.clearHighlights();
+    }
+  }
+
+  resetFigurePosition(figure) {
+    const { x, y } = figure.originalPosition;
+    figure.moveTo(x, y);
+  }
 
   handleMove(clickedFigure, targetSquare) {
     // Проверяем, кликнули ли на ту же фигуру
     if (this.selectedFigure === clickedFigure) {
       console.log("Снятие выделения с фигуры.");
       this.clearHighlights();
-      this.selectedFigure = null; // Сбрасываем выбор
-      return; // Выходим из метода
+      return false; // Выходим из метода
     }
-    console.log(this.selectedFigure.isMoveValid(targetSquare));
     // Проверяем, может ли выбранная фигура сделать ход на целевую клетку
     if (this.selectedFigure.isMoveValid(targetSquare)) {
       this.executeMove(targetSquare);
       console.log("Ход выполнен.");
+      return true
     } else {
       console.log("Этот ход недопустим.");
-      this.clearHighlights();
-      this.selectedFigure = null; // Снимаем выделение с фигуры
+      return false
     }
   }
 
@@ -959,6 +1044,7 @@ class Chess extends Phaser.Scene {
     this.highlightGraphics.forEach((highlight) => highlight.destroy());
     this.highlightGraphics = [];
     this.moveHistory = [];
+    this.moveHistoryText.setText("Move History:\n");
     this.moveNumber = 0;
     // Recreate the chess pieces
     this.createPieces();
@@ -1035,7 +1121,6 @@ class Chess extends Phaser.Scene {
     }
     return false;
   }
-
 }
 
 export default Chess;
