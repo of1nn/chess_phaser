@@ -1,2 +1,61 @@
-node_modules/
+# Зависимости
+/node_modules
 
+# Файлы сборки
+/dist
+/build
+
+# Логи
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Файлы среды выполнения
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Файлы редакторов
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Файлы операционной системы
+.DS_Store
+Thumbs.db
+
+# Временные файлы
+*.tmp
+*.temp
+
+# Файлы конфигурации
+config.js
+
+# Файлы кэша
+.cache/
+
+# Файлы покрытия кода тестами
+coverage/
+
+# Файлы Phaser
+phaser.min.js
+phaser.js
+
+# Файлы резервных копий
+*.bak
+
+# Личные заметки
+TODO.md
+NOTES.md
+
+# Файлы сборки и отладки
+debug/
+release/
+
+# Архивы
+*.zip
+*.rar
+*.7z
